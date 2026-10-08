@@ -1,1 +1,151 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ניהול חשבונות - אירית</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen pb-12">
 
+    <!-- מסך נעילה ב-PIN -->
+    <div id="pinOverlay" style="position:fixed; inset:0; background-color:#0f172a; z-index:999999; display:flex; align-items:center; justify-content:center; padding:1rem;">
+        <form onsubmit="window.checkPin(event)" class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xs text-center space-y-4">
+            <div class="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto text-xl font-bold">
+                🔒
+            </div>
+            <h2 class="text-xl font-bold text-slate-800">אבטחת אפליקציה</h2>
+            <p class="text-sm text-slate-500">הקש קוד גישה בן 4 ספרות</p>
+
+            <div class="space-y-3">
+                <input type="password" id="pinInput" maxlength="4" pattern="[0-9]*" inputmode="numeric" placeholder="••••" autofocus autocomplete="off" class="w-full text-center text-2xl font-bold tracking-widest border-2 border-slate-200 rounded-xl py-3 focus:border-indigo-600 focus:outline-none transition" />
+                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl transition">כניסה</button>
+            </div>
+
+            <p id="pinError" class="text-xs text-red-500 hidden font-bold">קוד שגוי, נסה שוב</p>
+        </form>
+    </div>
+
+    <!-- תוכן האפליקציה הראשי -->
+    <div id="appContent" style="display:block;">
+        <!-- סרגל עליון -->
+        <header class="bg-indigo-700 text-white shadow-md sticky top-0 z-40">
+            <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+                <div>
+                    <h1 class="text-xl font-bold">מערכת ניהול חשבונות</h1>
+                    <p class="text-xs text-indigo-200">שיעורים פרטיים במתמטיקה | אירית</p>
+                </div>
+                <div class="text-left">
+                    <span id="syncStatus" class="inline-flex items-center gap-1 bg-indigo-800 text-indigo-100 px-2.5 py-1 rounded-full text-xs">
+                        <span class="w-2 h-2 rounded-full bg-yellow-400" id="syncDot"></span>
+                        <span id="syncText">מתחבר...</span>
+                    </span>
+                </div>
+            </div>
+            <!-- ניווט ראשוני -->
+            <div class="flex border-t border-indigo-600 text-sm">
+                <button onclick="switchTab('dashboard')" id="tab-dashboard" class="flex-1 py-3 font-semibold text-center bg-indigo-800 text-white border-b-2 border-white">לוח בקרה</button>
+                <button onclick="switchTab('students')" id="tab-students" class="flex-1 py-3 font-semibold text-center hover:bg-indigo-600 text-indigo-100">תלמידים</button>
+                <button onclick="switchTab('lessons')" id="tab-lessons" class="flex-1 py-3 font-semibold text-center hover:bg-indigo-600 text-indigo-100">יומן שיעורים</button>
+                <button onclick="switchTab('expenses')" id="tab-expenses" class="flex-1 py-3 font-semibold text-center hover:bg-indigo-600 text-indigo-100">ניהול הוצאות</button>
+            </div>
+        </header>
+
+        <main class="max-w-6xl mx-auto px-4 pt-6">
+            <!-- 1. לוח בקרה -->
+            <section id="view-dashboard" class="space-y-6">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                        <p class="text-xs text-slate-500">הכנסות ברוטו (חודשי)</p>
+                        <p class="text-2xl font-bold text-slate-800" id="dash-income">₪0</p>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                        <p class="text-xs text-slate-500">הוצאות ברוטו (חודשי)</p>
+                        <p class="text-2xl font-bold text-slate-800" id="dash-expenses-gross">₪0</p>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                        <p class="text-xs text-slate-500">הוצאה מוכרת במס (חודשי)</p>
+                        <p class="text-2xl font-bold text-indigo-600" id="dash-expenses-deductible">₪0</p>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                        <p class="text-xs text-slate-500">רווח נטו חייב במס</p>
+                        <p class="text-2xl font-bold text-emerald-600" id="dash-net-profit">₪0</p>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 space-y-3">
+                    <h3 class="font-bold text-slate-800">פעולות מהירות</h3>
+                    <div class="flex flex-wrap gap-3">
+                        <button onclick="openModal('lessonModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">+ תיעוד שיעור</button>
+                        <button onclick="openModal('expenseModal')" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">+ הוספת הוצאה</button>
+                        <button onclick="openModal('studentModal')" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium transition">+ תלמיד חדש</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. ניהול תלמידים -->
+            <section id="view-students" class="hidden space-y-4">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-lg font-bold text-slate-800">רשימת תלמידים</h2>
+                    <button onclick="openModal('studentModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium">+ תלמיד חדש</button>
+                </div>
+                <div class="grid md:grid-cols-3 gap-4" id="studentsList"></div>
+            </section>
+
+            <!-- 3. יומן שיעורים -->
+            <section id="view-lessons" class="hidden space-y-4">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-lg font-bold text-slate-800">היסטוריית שיעורים</h2>
+                    <button onclick="openModal('lessonModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium">+ תיעוד שיעור</button>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
+                    <table class="w-full text-right text-sm">
+                        <thead class="bg-slate-50 text-slate-500 font-medium border-b">
+                            <tr>
+                                <th class="p-3">תאריך</th>
+                                <th class="p-3">תלמיד</th>
+                                <th class="p-3">משך</th>
+                                <th class="p-3">מחיר</th>
+                                <th class="p-3">סטטוס תשלום</th>
+                                <th class="p-3">פעולות</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lessonsTable" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- 4. ניהול הוצאות -->
+            <section id="view-expenses" class="hidden space-y-4">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-lg font-bold text-slate-800">הוצאות עסק מוכרות</h2>
+                    <button onclick="openModal('expenseModal')" class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium">+ הוספת הוצאה</button>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
+                    <table class="w-full text-right text-sm">
+                        <thead class="bg-slate-50 text-slate-500 font-medium border-b">
+                            <tr>
+                                <th class="p-3">תאריך</th>
+                                <th class="p-3">תיאור/ספק</th>
+                                <th class="p-3">קטגוריה</th>
+                                <th class="p-3">סכום ברוטו</th>
+                                <th class="p-3">% מוכר</th>
+                                <th class="p-3">סכום מוכר במס</th>
+                                <th class="p-3">פעולות</th>
+                            </tr>
+                        </thead>
+                        <tbody id="expensesTable" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- דיאלוגים (Modals) -->
+    <dialog id="studentModal" class="p-6 bg-white rounded-xl shadow-xl max-w-md w-full backdrop:bg-black/50">
+        <form id="studentForm" onsubmit="saveStudent(event)" class="space-y-4">
+            <h3 class="font-bold text-slate-800 text-lg">הוספת / ערי
