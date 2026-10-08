@@ -673,33 +673,34 @@ const firebaseConfig = {
             a.click();
         }
     </script>
-    // קוד האבטחה (תוכל לשנות את "1234" לכל קוד 4 ספרות שתרצה!)
+    // // קוד גישה (שנה ל-4 ספרות שתרצה)
 const SECRET_PIN = "0544";
 
-document.addEventListener("DOMContentLoaded", () => {
-    const inputs = document.querySelectorAll("#pinInputs input");
+function setupPinLock() {
+    const inputs = document.querySelectorAll(".pin-box");
     const overlay = document.getElementById("pinOverlay");
     const errorMsg = document.getElementById("pinError");
 
-    // מיקוד אוטומטי במשבצת הראשונה
-    inputs[0].focus();
+    if (!inputs.length) return;
+
+    // פוקוס על השדה הראשון
+    setTimeout(() => inputs[0].focus(), 100);
 
     inputs.forEach((input, index) => {
         input.addEventListener("input", (e) => {
-            // מעבר אוטומטי למשבצת הבאה
-            if (e.target.value && index < inputs.length - 1) {
+            const val = e.target.value;
+
+            // אם הוקלדה ספרה, עוברים לשדה הבא
+            if (val && index < inputs.length - 1) {
                 inputs[index + 1].focus();
             }
 
-            // בדיקת הקוד ברגע שמקלידים את 4 הספרות
+            // בדיקת הקוד
             let currentPin = Array.from(inputs).map(i => i.value).join("");
             if (currentPin.length === 4) {
                 if (currentPin === SECRET_PIN) {
-                    // קוד נכון - העלמת מסך הנעילה
-                    overlay.classList.add("hidden");
-                    errorMsg.classList.add("hidden");
+                    overlay.style.display = "none";
                 } else {
-                    // קוד שגוי - איפוס והצגת שגיאה
                     errorMsg.classList.remove("hidden");
                     inputs.forEach(i => i.value = "");
                     inputs[0].focus();
@@ -707,14 +708,15 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
 
-        // תמיכה במחיקה (Backspace) למעבר אחורה
         input.addEventListener("keydown", (e) => {
             if (e.key === "Backspace" && !e.target.value && index > 0) {
                 inputs[index - 1].focus();
             }
         });
     });
-});
-    
+}
+
+// הפעלת הנעילה
+setupPinLock();
 </body>
 </html>
