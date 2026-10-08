@@ -274,16 +274,28 @@
 
     <script>
         // 1. הגדרות Firebase - הדבקי כאן את הקוד שקיבלת מגוגל!
-        const firebaseConfig = {
-            apiKey: "הדביקי_כאן_את_האפ_איי_קיי",
-            authDomain: "irit-math.firebaseapp.com",
-            databaseURL: "https://irit-math-default-rtdb.firebaseio.com",
-            projectId: "irit-math",
-            storageBucket: "irit-math.appspot.com",
-            messagingSenderId: "123456789",
-            appId: "1:123456789:web:123456789"
-        };
+       // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
 
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyDc1l9j8fAieAf8cCS_FeL403i8NW6ctNg",
+  authDomain: "erit-math.firebaseapp.com",
+  databaseURL: "https://erit-math-default-rtdb.firebaseio.com",
+  projectId: "erit-math",
+  storageBucket: "erit-math.firebasestorage.app",
+  messagingSenderId: "816878221040",
+  appId: "1:816878221040:web:35b40a6e4c97296cda7435",
+  measurementId: "G-470GKV65RY"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
         // אתחול Firebase
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database().ref('irit_data');
