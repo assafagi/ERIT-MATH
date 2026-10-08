@@ -1,43 +1,333 @@
-
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>אירית רביב אגי - ניהול עסק</title>
+    <title>אירית רביב אגי - ניהול עסק הוראת מתמטיקה</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel compiler for JSX -->
+    <!-- Babel Compiler -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; }
+    </style>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans min-h-screen">
+<body class="bg-slate-50 text-slate-800 min-h-screen">
     <div id="root"></div>
 
     <script type="text/babel">
-      // כאן מודבק קוד ה-React של האפליקציה
       const { useState, useEffect } = React;
 
-      function App() {
-        return (
-          <div class="p-6 max-w-4xl mx-auto">
-            <header class="bg-indigo-600 text-white p-6 rounded-2xl shadow-lg mb-6">
-              <h1 class="text-2xl font-bold">אירית רביב אגי - הוראת מתמטיקה</h1>
-              <p class="text-indigo-100 text-sm mt-1">מערכת ניהול שיעורים, הוצאות ודוחות מס</p>
-            </header>
-            <main class="bg-white p-6 rounded-2xl shadow border border-slate-100 text-center">
-              <h2 class="text-xl font-semibold text-slate-700 mb-2">המערכת מוכנה ופעילה!</h2>
-              <p class="text-slate-500">כל הנתונים שתרשמו יישמרו באופן קבוע במכשיר זה ולא יימחקו ברענון.</p>
-            </main>
-          </div>
-        );
-      }
+      // מנגנון אחסון עמיד ומגובה באמצעות LocalStorage & IndexedDB
+      const STORAGE_KEY = 'irit_math_biz_data_v1';
 
-      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-    </script>
-</body>
-</html>
+      const defaultData = {
+        businessInfo: {
+          name: 'אירית רביב אגי - הוראת מתמטיקה',
+          taxId: '',
+          businessType: 'עוסק פטור',
+          taxYear: '2026'
+        },
+        students: [
+          { id: '1', name: 'עומר כהן', phone: '050-1234567', rate: 180, class: 'כיתה י"א - 5 יח"ל', active: true },
+          { id: '2', name: 'מאיה לוי', phone: '052-7654321', rate: 200, class: 'כיתה י"ב - 5 יח"ל', active: true }
+        ],
+        lessons: [
+          { id: '101', studentId: '1', studentName: 'עומר כהן', date: '2026-10-01', durationMinutes: 60, amount: 180, paid: true, paymentMethod: 'ביט', notes: 'הכנה למבחן בנושא נגזרות' },
+          { id: '102', studentId: '2', studentName: 'מאיה לוי', date: '2026-10-04', durationMinutes: 60, amount: 200, paid: false, paymentMethod: 'טרם שולם', notes: 'טריגונומטריה במרחב' }
+        ],
+        expenses: [
+          { id: '201', title: 'ספרי לימוד ומיקוד 5 יחידות', category: 'ציוד לימודי וספרות', date: '2026-09-15', amountGross: 350, deductiblePercent: 100, supplier: 'ספרי ניב', notes: 'ספרי הכנה לבגרות', receiptImage: null },
+          { id: '202', title: 'דלק לנסיעות לשיעורים פרטיים', category: 'נסיעות ודלק', date: '2026-09-20', amountGross: 400, deductiblePercent: 45, supplier: 'פז', notes: 'נסיעות לתלמידים', receiptImage: null },
+          { id: '203', title: 'חשמל ואינטרנט - חדר עבודה', category: 'אחזקת חדר עבודה/הוצאות בית', date: '2026-09-28', amountGross: 600, deductiblePercent: 25, supplier: 'חברת החשמל / בזק', notes: 'יחסי לחדר עבודה בבית', receiptImage: null }
+        ]
+      };
+
+      function App() {
+        const [activeTab, setActiveTab] = useState('dashboard');
+        const [data, setData] = useState(() => {
+          try {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            return saved ? JSON.parse(saved) : defaultData;
+          } catch (e) {
+            return defaultData;
+          }
+        });
+        const [lastSavedTime, setLastSavedTime] = useState(new Date().toLocaleTimeString('he-IL'));
+
+        // שמירה אוטומטית בזמן אמת
+        useEffect(() => {
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            setLastSavedTime(new Date().toLocaleTimeString('he-IL'));
+          } catch (e) {
+            console.error('Save error', e);
+          }
+        }, [data]);
+
+        // טפסים ומודאלים
+        const [showStudentModal, setShowStudentModal] = useState(false);
+        const [editingStudent, setEditingStudent] = useState(null);
+        const [studentForm, setStudentForm] = useState({ name: '', phone: '', rate: 180, class: '', active: true });
+
+        const [showLessonModal, setShowLessonModal] = useState(false);
+        const [editingLesson, setEditingLesson] = useState(null);
+        const [lessonForm, setLessonForm] = useState({ studentId: '', date: new Date().toISOString().split('T')[0], durationMinutes: 60, amount: 180, paid: true, paymentMethod: 'ביט', notes: '' });
+
+        const [showExpenseModal, setShowExpenseModal] = useState(false);
+        const [editingExpense, setEditingExpense] = useState(null);
+        const [expenseForm, setExpenseForm] = useState({ title: '', category: 'ציוד לימודי וספרות', date: new Date().toISOString().split('T')[0], amountGross: '', deductiblePercent: 100, supplier: '', notes: '', receiptImage: null });
+
+        // חישובים פיננסיים
+        const totalIncomePaid = data.lessons.filter(l => l.paid).reduce((sum, l) => sum + Number(l.amount || 0), 0);
+        const totalIncomeUnpaid = data.lessons.filter(l => !l.paid).reduce((sum, l) => sum + Number(l.amount || 0), 0);
+        const totalGrossExpenses = data.expenses.reduce((sum, e) => sum + Number(e.amountGross || 0), 0);
+        const totalDeductibleExpenses = data.expenses.reduce((sum, e) => sum + (Number(e.amountGross || 0) * (Number(e.deductiblePercent || 100) / 100)), 0);
+        const netProfit = totalIncomePaid - totalGrossExpenses;
+        const taxableIncome = totalIncomePaid - totalDeductibleExpenses;
+
+        // פונקציות לתלמידים
+        const handleSaveStudent = () => {
+          if (!studentForm.name) return alert('נא להזין שם תלמיד');
+          if (editingStudent) {
+            setData({
+              ...data,
+              students: data.students.map(s => s.id === editingStudent.id ? { ...studentForm, id: s.id } : s)
+            });
+          } else {
+            setData({
+              ...data,
+              students: [...data.students, { ...studentForm, id: Date.now().toString() }]
+            });
+          }
+          setShowStudentModal(false);
+          setEditingStudent(null);
+          setStudentForm({ name: '', phone: '', rate: 180, class: '', active: true });
+        };
+
+        const handleDeleteStudent = (id) => {
+          if (confirm('האם למחוק תלמיד זה?')) {
+            setData({ ...data, students: data.students.filter(s => s.id !== id) });
+          }
+        };
+
+        // פונקציות לשיעורים
+        const handleSaveLesson = () => {
+          if (!lessonForm.studentId) return alert('נא לבחור תלמיד');
+          const student = data.students.find(s => s.id === lessonForm.studentId);
+          const studentName = student ? student.name : 'תלמיד';
+
+          if (editingLesson) {
+            setData({
+              ...data,
+              lessons: data.lessons.map(l => l.id === editingLesson.id ? { ...lessonForm, studentName, id: l.id } : l)
+            });
+          } else {
+            setData({
+              ...data,
+              lessons: [...data.lessons, { ...lessonForm, studentName, id: Date.now().toString() }]
+            });
+          }
+          setShowLessonModal(false);
+          setEditingLesson(null);
+        };
+
+        const handleDeleteLesson = (id) => {
+          if (confirm('האם למחוק שיעור זה?')) {
+            setData({ ...data, lessons: data.lessons.filter(l => l.id !== id) });
+          }
+        };
+
+        // פונקציות להוצאות
+        const handleSaveExpense = () => {
+          if (!expenseForm.title || !expenseForm.amountGross) return alert('נא למלא תיאור וסכום');
+          if (editingExpense) {
+            setData({
+              ...data,
+              expenses: data.expenses.map(e => e.id === editingExpense.id ? { ...expenseForm, id: e.id } : e)
+            });
+          } else {
+            setData({
+              ...data,
+              expenses: [...data.expenses, { ...expenseForm, id: Date.now().toString() }]
+            });
+          }
+          setShowExpenseModal(false);
+          setEditingExpense(null);
+        };
+
+        const handleDeleteExpense = (id) => {
+          if (confirm('האם למחוק הוצאה זו?')) {
+            setData({ ...data, expenses: data.expenses.filter(e => e.id !== id) });
+          }
+        };
+
+        const handleImageUpload = (e) => {
+          const file = e.target.files[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              setExpenseForm({ ...expenseForm, receiptImage: reader.result });
+            };
+            reader.readAsDataURL(file);
+          }
+        };
+
+        // ייצוא ל-CSV
+        const exportToCSV = () => {
+          let csv = '\uFEFF'; // UTF-8 BOM
+          csv += 'דו"ח רווח והפסד שנתי - ' + data.businessInfo.name + '\n';
+          csv += 'שנת מס: ' + data.businessInfo.taxYear + '\n\n';
+          csv += 'סיכום כללי:\n';
+          csv += `סה"כ הכנסות ששולמו,₪${totalIncomePaid}\n`;
+          csv += `סה"כ הכנסות בטרם שולמו,₪${totalIncomeUnpaid}\n`;
+          csv += `סה"כ הוצאות ברוטו,₪${totalGrossExpenses}\n`;
+          csv += `סה"כ הוצאות מוכרות במס,₪${totalDeductibleExpenses}\n`;
+          csv += `רווח נקי,₪${netProfit}\n`;
+          csv += `רווח חייב במס משוער,₪${taxableIncome}\n\n`;
+
+          csv += 'פירוט הוצאות מוכרות:\n';
+          csv += 'תאריך,ספק,תיאור,קטגוריה,סכום ברוטו,% מוכר,סכום מוכר במס\n';
+          data.expenses.forEach(e => {
+            const deductible = e.amountGross * (e.deductiblePercent / 100);
+            csv += `"${e.date}","${e.supplier}","${e.title}","${e.category}",₪${e.amountGross},${e.deductiblePercent}%,₪${deductible}\n`;
+          });
+
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `tax_report_${data.businessInfo.taxYear}.csv`;
+          a.click();
+        };
+
+        return (
+          <div class="min-h-screen bg-slate-50 text-slate-800 pb-12">
+            {/* סרגל עליון */}
+            <header class="bg-indigo-700 text-white shadow-md sticky top-0 z-40">
+              <div class="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h1 class="text-xl md:text-2xl font-bold">{data.businessInfo.name}</h1>
+                  <p class="text-xs text-indigo-200">מערכת ניהול שיעורים, קבלות ודו"ח מס שנתי</p>
+                </div>
+                <div class="flex items-center gap-3 text-xs bg-indigo-800 px-3 py-1.5 rounded-lg border border-indigo-600">
+                  <span class="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse"></span>
+                  <span>נשמר במכשיר ({lastSavedTime})</span>
+                </div>
+              </div>
+
+              {/* לשוניות ניווט */}
+              <div class="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto border-t border-indigo-600/50">
+                {[
+                  { id: 'dashboard', label: 'דאשבורד' },
+                  { id: 'students', label: 'תלמידים' },
+                  { id: 'lessons', label: 'יומן שיעורים' },
+                  { id: 'expenses', label: 'הוצאות וקבלות' },
+                  { id: 'tax_report', label: 'דו"ח מס שנתי' },
+                  { id: 'settings', label: 'הגדרות עסק' }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    class={`px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${
+                      activeTab === tab.id
+                        ? 'border-white text-white bg-indigo-800/60'
+                        : 'border-transparent text-indigo-100 hover:text-white hover:bg-indigo-600/50'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </header>
+
+            {/* תוכן מרכזי */}
+            <main class="max-w-6xl mx-auto px-4 pt-6">
+
+              {/* דאשבורד */}
+              {activeTab === 'dashboard' && (
+                <div class="space-y-6">
+                  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                      <p class="text-xs font-semibold text-slate-500 uppercase">הכנסות ששולמו</p>
+                      <p class="text-2xl font-bold text-emerald-600 mt-2">₪{totalIncomePaid.toLocaleString()}</p>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                      <p class="text-xs font-semibold text-slate-500 uppercase">חוב פתוח (טרם שולם)</p>
+                      <p class="text-2xl font-bold text-amber-600 mt-2">₪{totalIncomeUnpaid.toLocaleString()}</p>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                      <p class="text-xs font-semibold text-slate-500 uppercase">הוצאות מוכרות במס</p>
+                      <p class="text-2xl font-bold text-rose-600 mt-2">₪{Math.round(totalDeductibleExpenses).toLocaleString()}</p>
+                      <p class="text-xs text-slate-400 mt-1">מתוך ₪{totalGrossExpenses.toLocaleString()} ברוטו</p>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm bg-gradient-to-br from-indigo-50 to-white">
+                      <p class="text-xs font-semibold text-indigo-600 uppercase">רווח חייב במס משוער</p>
+                      <p class="text-2xl font-bold text-indigo-900 mt-2">₪{Math.max(0, Math.round(taxableIncome)).toLocaleString()}</p>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* שיעורים אחרונים */}
+                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                      <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-bold text-slate-800">שיעורים אחרונים</h3>
+                        <button onClick={() => setActiveTab('lessons')} class="text-xs text-indigo-600 font-semibold hover:underline">לכל השיעורים ←</button>
+                      </div>
+                      <div class="space-y-3">
+                        {data.lessons.slice(0, 4).map(l => (
+                          <div key={l.id} class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                            <div>
+                              <p class="font-semibold text-sm">{l.studentName}</p>
+                              <p class="text-xs text-slate-500">{l.date} • {l.notes || 'ללא הערות'}</p>
+                            </div>
+                            <div class="text-left">
+                              <p class="font-bold text-sm">₪{l.amount}</p>
+                              <span class={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${l.paid ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                {l.paid ? 'שולם (' + l.paymentMethod + ')' : 'לא שולם'}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* קבלות והוצאות אחרונות */}
+                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                      <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-bold text-slate-800">הוצאות וקבלות אחרונות</h3>
+                        <button onClick={() => setActiveTab('expenses')} class="text-xs text-indigo-600 font-semibold hover:underline">לכל ההוצאות ←</button>
+                      </div>
+                      <div class="space-y-3">
+                        {data.expenses.slice(0, 4).map(e => (
+                          <div key={e.id} class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                            <div>
+                              <p class="font-semibold text-sm">{e.title}</p>
+                              <p class="text-xs text-slate-500">{e.date} • {e.category}</p>
+                            </div>
+                            <div class="text-left">
+                              <p class="font-bold text-sm text-rose-600">₪{e.amountGross}</p>
+                              <p class="text-[10px] text-slate-500">{e.deductiblePercent}% מוכר (₪{e.amountGross * (e.deductiblePercent / 100)})</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* תלמידים */}
+              {activeTab === 'students' && (
+                <div class="space-y-4">
+                  <div class="flex justify-between items-center">
+                    <h2 class="text-xl font-bold">ניהול תלמידים</h2>
+                    <button
+                      onClick={() => {
+                        setEditingStudent(null);
+                        setStudentForm({ name: '', phone: '',
