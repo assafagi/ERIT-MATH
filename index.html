@@ -1,1 +1,514 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ניהול חשבונות - שיעורים פרטיים מתמטיקה | אירית</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase Compat SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen pb-12">
 
+    <!-- סרגל עליון -->
+    <header class="bg-indigo-700 text-white shadow-md sticky top-0 z-40">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold">מערכת ניהול חשבונות</h1>
+                <p class="text-xs text-indigo-200">שיעורים פרטיים במתמטיקה | אירית</p>
+            </div>
+            <div class="text-left">
+                <span id="syncStatus" class="inline-flex items-center gap-1 bg-indigo-800 text-indigo-100 px-2.5 py-1 rounded-full text-xs">
+                    <span class="w-2 h-2 rounded-full bg-yellow-400" id="syncDot"></span>
+                    <span id="syncText">מתחבר...</span>
+                </span>
+            </div>
+        </div>
+        <!-- ניווט ראשוני -->
+        <div class="flex border-t border-indigo-600 text-sm">
+            <button onclick="switchTab('dashboard')" id="tab-dashboard" class="flex-1 py-3 font-semibold text-center bg-indigo-800 text-white border-b-2 border-white">לוח בקרה</button>
+            <button onclick="switchTab('students')" id="tab-students" class="flex-1 py-3 font-semibold text-center hover:bg-indigo-600 text-indigo-100">תלמידים</button>
+            <button onclick="switchTab('lessons')" id="tab-lessons" class="flex-1 py-3 font-semibold text-center hover:bg-indigo-600 text-indigo-100">יומן שיעורים</button>
+            <button onclick="switchTab('expenses')" id="tab-expenses" class="flex-1 py-3 font-semibold text-center hover:bg-indigo-600 text-indigo-100">ניהול הוצאות</button>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 pt-6">
+
+        <!-- 1. לוח בקרה -->
+        <section id="view-dashboard" class="space-y-6">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <p class="text-xs text-slate-500">הכנסות ברוטו (חודשי)</p>
+                    <p class="text-2xl font-bold text-slate-800" id="dash-income">₪0</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <p class="text-xs text-slate-500">הוצאות ברוטו (חודשי)</p>
+                    <p class="text-2xl font-bold text-slate-800" id="dash-expenses-gross">₪0</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <p class="text-xs text-slate-500">הוצאה מוכרת במס (חודשי)</p>
+                    <p class="text-2xl font-bold text-indigo-600" id="dash-expenses-deductible">₪0</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <p class="text-xs text-slate-500">רווח נטו חייב במס</p>
+                    <p class="text-2xl font-bold text-emerald-600" id="dash-net-profit">₪0</p>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 space-y-3">
+                <h3 class="font-bold text-slate-800">פעולות מהירות</h3>
+                <div class="flex flex-wrap gap-3">
+                    <button onclick="openModal('lessonModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">+ תיעוד שיעור</button>
+                    <button onclick="openModal('expenseModal')" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">+ הוספת הוצאה</button>
+                    <button onclick="openModal('studentModal')" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium transition">+ תלמיד חדש</button>
+                    <button onclick="exportToCSV()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">📊 ייצוא ל-Excel/CSV</button>
+                </div>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <h4 class="font-bold text-slate-800 mb-3">שיעורים אחרונים</h4>
+                    <div class="divide-y divide-slate-100 text-sm" id="dash-recent-lessons">
+                        <p class="text-slate-400 py-2 text-center">אין שיעורים מתועדים</p>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <h4 class="font-bold text-slate-800 mb-3">הוצאות אחרונות</h4>
+                    <div class="divide-y divide-slate-100 text-sm" id="dash-recent-expenses">
+                        <p class="text-slate-400 py-2 text-center">אין הוצאות מתועדות</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. ניהול תלמידים -->
+        <section id="view-students" class="hidden space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-lg font-bold text-slate-800">רשימת תלמידים</h2>
+                <button onclick="openModal('studentModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium">+ תלמיד חדש</button>
+            </div>
+            <div class="grid md:grid-cols-3 gap-4" id="studentsList"></div>
+        </section>
+
+        <!-- 3. יומן שיעורים -->
+        <section id="view-lessons" class="hidden space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-lg font-bold text-slate-800">היסטוריית שיעורים</h2>
+                <button onclick="openModal('lessonModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium">+ תיעוד שיעור</button>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
+                <table class="w-full text-right text-sm">
+                    <thead class="bg-slate-50 text-slate-500 font-medium border-b">
+                        <tr>
+                            <th class="p-3">תאריך</th>
+                            <th class="p-3">תלמיד</th>
+                            <th class="p-3">משך</th>
+                            <th class="p-3">מחיר</th>
+                            <th class="p-3">סטטוס תשלום</th>
+                            <th class="p-3">פעולות</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lessonsTable" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 4. ניהול הוצאות -->
+        <section id="view-expenses" class="hidden space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-lg font-bold text-slate-800">הוצאות עסק מוכרות</h2>
+                <button onclick="openModal('expenseModal')" class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium">+ הוספת הוצאה</button>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
+                <table class="w-full text-right text-sm">
+                    <thead class="bg-slate-50 text-slate-500 font-medium border-b">
+                        <tr>
+                            <th class="p-3">תאריך</th>
+                            <th class="p-3">תיאור/ספק</th>
+                            <th class="p-3">קטגוריה</th>
+                            <th class="p-3">סכום ברוטו</th>
+                            <th class="p-3">% מוכר</th>
+                            <th class="p-3">סכום מוכר במס</th>
+                            <th class="p-3">חשבונית</th>
+                            <th class="p-3">פעולות</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expensesTable" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- דיאלוג תלמיד -->
+    <dialog id="studentModal" class="p-6 bg-white rounded-xl shadow-xl max-w-md w-full backdrop:bg-black/50">
+        <form id="studentForm" onsubmit="saveStudent(event)" class="space-y-4">
+            <h3 class="font-bold text-slate-800 text-lg">הוספת / עריכת תלמיד</h3>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">שם מלא</label>
+                <input type="text" id="stdName" required class="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">מחיר שעתי מומלץ (₪)</label>
+                <input type="number" id="stdRate" required value="150" class="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">טלפון/איש קשר</label>
+                <input type="text" id="stdPhone" class="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div class="flex gap-2 justify-end pt-2">
+                <button type="button" onclick="closeModal('studentModal')" class="px-4 py-2 text-sm border rounded-lg">ביטול</button>
+                <button type="submit" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg font-medium">שמירה</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- דיאלוג שיעור -->
+    <dialog id="lessonModal" class="p-6 bg-white rounded-xl shadow-xl max-w-md w-full backdrop:bg-black/50">
+        <form id="lessonForm" onsubmit="saveLesson(event)" class="space-y-4">
+            <h3 class="font-bold text-slate-800 text-lg">תיעוד שיעור</h3>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">תאריך</label>
+                <input type="date" id="lsnDate" required class="w-full p-2 border rounded-lg text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">תלמיד</label>
+                <select id="lsnStudent" required class="w-full p-2 border rounded-lg text-sm"></select>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">משך (בדקות)</label>
+                    <input type="number" id="lsnDuration" value="60" required class="w-full p-2 border rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">מחיר לשיעור (₪)</label>
+                    <input type="number" id="lsnPrice" required class="w-full p-2 border rounded-lg text-sm">
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">סטטוס תשלום</label>
+                <select id="lsnPaid" class="w-full p-2 border rounded-lg text-sm">
+                    <option value="true">שולם</option>
+                    <option value="false">טרם שולם</option>
+                </select>
+            </div>
+            <div class="flex gap-2 justify-end pt-2">
+                <button type="button" onclick="closeModal('lessonModal')" class="px-4 py-2 text-sm border rounded-lg">ביטול</button>
+                <button type="submit" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg font-medium">שמירה</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- דיאלוג הוצאה -->
+    <dialog id="expenseModal" class="p-6 bg-white rounded-xl shadow-xl max-w-md w-full backdrop:bg-black/50">
+        <form id="expenseForm" onsubmit="saveExpense(event)" class="space-y-4">
+            <h3 class="font-bold text-slate-800 text-lg">רישום הוצאה מוכרת</h3>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">תאריך</label>
+                <input type="date" id="expDate" required class="w-full p-2 border rounded-lg text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">תיאור ההוצאה / שם ספק</label>
+                <input type="text" id="expTitle" required placeholder="למשל: דלק לנסיעה, ספר לימוד" class="w-full p-2 border rounded-lg text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">קטגוריית הוצאה</label>
+                <select id="expCategory" onchange="updateDeductibleRatio()" class="w-full p-2 border rounded-lg text-sm">
+                    <option value="materials" data-percent="100">חומרי לימוד וספרים (100% מוכר)</option>
+                    <option value="travel" data-percent="45">דלק ותחבורה לשיעורים (45% מוכר)</option>
+                    <option value="office" data-percent="25">משרד ביתי/חשמל/אינטרנט (25% מוכר)</option>
+                    <option value="tech" data-percent="100">תוכנות, פרסום ושיווק (100% מוכר)</option>
+                </select>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">סכום ברוטו (₪)</label>
+                    <input type="number" id="expAmountGross" step="0.01" required class="w-full p-2 border rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">% מוכר במס</label>
+                    <input type="number" id="expPercent" readonly class="w-full p-2 border rounded-lg text-sm bg-slate-100 text-slate-600 font-bold">
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">צילום חשבונית / קבלה (אופציונלי)</label>
+                <input type="file" id="expReceipt" accept="image/*" capture="environment" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-rose-50 file:text-rose-700 hover:file:bg-rose-100">
+            </div>
+            <div class="flex gap-2 justify-end pt-2">
+                <button type="button" onclick="closeModal('expenseModal')" class="px-4 py-2 text-sm border rounded-lg">ביטול</button>
+                <button type="submit" class="px-4 py-2 text-sm bg-rose-600 text-white rounded-lg font-medium">שמירה</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- דיאלוג תצוגת קבלה/חשבונית -->
+    <dialog id="receiptModal" class="p-4 bg-white rounded-xl shadow-xl max-w-lg w-full backdrop:bg-black/50 text-center space-y-4">
+        <h3 class="font-bold text-slate-800 text-lg">צילום חשבונית / קבלה</h3>
+        <div class="max-h-96 overflow-auto border rounded-lg flex justify-center bg-slate-50 p-2">
+            <img id="receiptImage" src="" alt="חשבונית" class="max-w-full h-auto rounded shadow-sm">
+        </div>
+        <button onclick="closeModal('receiptModal')" class="w-full py-2 bg-slate-800 text-white font-medium text-sm rounded-lg">סגור</button>
+    </dialog>
+
+    <script>
+        // 1. הגדרות Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDc119j8fAieAf8cCS_FeL403i8NW6ctNg",
+            authDomain: "erit-math.firebaseapp.com",
+            databaseURL: "https://erit-math-default-rtdb.firebaseio.com",
+            projectId: "erit-math",
+            storageBucket: "erit-math.firebasestorage.app",
+            messagingSenderId: "816878221040",
+            appId: "1:816878221040:web:35b40a6e4c97296cda7435",
+            measurementId: "G-470GKV65RY"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database().ref('irit_data');
+
+        let appData = { students: [], lessons: [], expenses: [] };
+
+        db.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                appData = {
+                    students: data.students || [],
+                    lessons: data.lessons || [],
+                    expenses: data.expenses || []
+                };
+            }
+            updateSyncStatus(true);
+            renderAll();
+        }, (error) => {
+            console.error("Firebase Sync Error:", error);
+            updateSyncStatus(false);
+        });
+
+        function saveDataToCloud() {
+            updateSyncStatus('saving');
+            db.set(appData).then(() => {
+                updateSyncStatus(true);
+            }).catch(err => {
+                console.error("Error saving data:", err);
+                updateSyncStatus(false);
+            });
+        }
+
+        function updateSyncStatus(status) {
+            const dot = document.getElementById('syncDot');
+            const text = document.getElementById('syncText');
+            if (status === true) {
+                dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+                text.innerText = 'מסתנכרן בזמן אמת';
+            } else if (status === 'saving') {
+                dot.className = 'w-2 h-2 rounded-full bg-yellow-400 animate-pulse';
+                text.innerText = 'שומר שינויים...';
+            } else {
+                dot.className = 'w-2 h-2 rounded-full bg-rose-500';
+                text.innerText = 'שגיאת חיבור';
+            }
+        }
+
+        function switchTab(tabName) {
+            ['dashboard', 'students', 'lessons', 'expenses'].forEach(t => {
+                document.getElementById(`view-${t}`).classList.add('hidden');
+                document.getElementById(`tab-${t}`).className = 'flex-1 py-3 font-semibold text-center hover:bg-indigo-600 text-indigo-100';
+            });
+            document.getElementById(`view-${tabName}`).classList.remove('hidden');
+            document.getElementById(`tab-${tabName}`).className = 'flex-1 py-3 font-semibold text-center bg-indigo-800 text-white border-b-2 border-white';
+        }
+
+        function openModal(id) {
+            if(id === 'lessonModal') populateStudentSelect();
+            if(id === 'expenseModal') updateDeductibleRatio();
+            document.getElementById(id).showModal();
+        }
+        function closeModal(id) {
+            document.getElementById(id).close();
+        }
+
+        function saveStudent(e) {
+            e.preventDefault();
+            const name = document.getElementById('stdName').value;
+            const rate = parseFloat(document.getElementById('stdRate').value) || 0;
+            const phone = document.getElementById('stdPhone').value;
+
+            appData.students.push({ id: Date.now().toString(), name, rate, phone });
+            saveDataToCloud();
+            closeModal('studentModal');
+            document.getElementById('studentForm').reset();
+        }
+
+        function deleteStudent(id) {
+            if(confirm('האם למחוק תלמיד זה?')) {
+                appData.students = appData.students.filter(s => s.id !== id);
+                saveDataToCloud();
+            }
+        }
+
+        function saveLesson(e) {
+            e.preventDefault();
+            const date = document.getElementById('lsnDate').value;
+            const studentId = document.getElementById('lsnStudent').value;
+            const duration = parseInt(document.getElementById('lsnDuration').value) || 60;
+            const price = parseFloat(document.getElementById('lsnPrice').value) || 0;
+            const paid = document.getElementById('lsnPaid').value === 'true';
+
+            appData.lessons.push({ id: Date.now().toString(), date, studentId, duration, price, paid });
+            saveDataToCloud();
+            closeModal('lessonModal');
+            document.getElementById('lessonForm').reset();
+        }
+
+        function toggleLessonPaid(id) {
+            const lesson = appData.lessons.find(l => l.id === id);
+            if(lesson) {
+                lesson.paid = !lesson.paid;
+                saveDataToCloud();
+            }
+        }
+
+        function deleteLesson(id) {
+            if(confirm('האם למחוק שיעור זה?')) {
+                appData.lessons = appData.lessons.filter(l => l.id !== id);
+                saveDataToCloud();
+            }
+        }
+
+        function updateDeductibleRatio() {
+            const select = document.getElementById('expCategory');
+            const percent = select.options[select.selectedIndex].getAttribute('data-percent');
+            document.getElementById('expPercent').value = percent;
+        }
+
+        function saveExpense(e) {
+            e.preventDefault();
+            const date = document.getElementById('expDate').value;
+            const title = document.getElementById('expTitle').value;
+            const category = document.getElementById('expCategory').value;
+            const amountGross = parseFloat(document.getElementById('expAmountGross').value) || 0;
+            const deductiblePercent = parseFloat(document.getElementById('expPercent').value) || 100;
+            const fileInput = document.getElementById('expReceipt');
+
+            const newExpense = { id: Date.now().toString(), date, title, category, amountGross, deductiblePercent, receiptUrl: '' };
+
+            if (fileInput.files && fileInput.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    newExpense.receiptUrl = evt.target.result;
+                    appData.expenses.push(newExpense);
+                    saveDataToCloud();
+                    closeModal('expenseModal');
+                    document.getElementById('expenseForm').reset();
+                };
+                reader.readAsDataURL(fileInput.files[0]);
+            } else {
+                appData.expenses.push(newExpense);
+                saveDataToCloud();
+                closeModal('expenseModal');
+                document.getElementById('expenseForm').reset();
+            }
+        }
+
+        function showReceipt(url) {
+            document.getElementById('receiptImage').src = url;
+            openModal('receiptModal');
+        }
+
+        function deleteExpense(id) {
+            if(confirm('האם למחוק הוצאה זו?')) {
+                appData.expenses = appData.expenses.filter(e => e.id !== id);
+                saveDataToCloud();
+            }
+        }
+
+        function populateStudentSelect() {
+            const select = document.getElementById('lsnStudent');
+            select.innerHTML = appData.students.map(s => `<option value="${s.id}">${s.name} (${s.rate}₪/שעה)</option>`).join('');
+            if(appData.students.length > 0) {
+                document.getElementById('lsnPrice').value = appData.students[0].rate;
+            }
+        }
+
+        function renderAll() {
+            let totalIncome = appData.lessons.reduce((acc, l) => acc + (l.paid ? l.price : 0), 0);
+            let totalGrossExpenses = appData.expenses.reduce((acc, e) => acc + e.amountGross, 0);
+            let totalDeductibleExpenses = appData.expenses.reduce((acc, e) => acc + (e.amountGross * (e.deductiblePercent / 100)), 0);
+            let netTaxableProfit = totalIncome - totalDeductibleExpenses;
+
+            document.getElementById('dash-income').innerText = `₪${totalIncome.toLocaleString()}`;
+            document.getElementById('dash-expenses-gross').innerText = `₪${totalGrossExpenses.toLocaleString()}`;
+            document.getElementById('dash-expenses-deductible').innerText = `₪${totalDeductibleExpenses.toLocaleString()}`;
+            document.getElementById('dash-net-profit').innerText = `₪${netTaxableProfit.toLocaleString()}`;
+
+            const stdList = document.getElementById('studentsList');
+            stdList.innerHTML = appData.students.map(s => `
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center">
+                    <div>
+                        <h4 class="font-bold text-slate-800">${s.name}</h4>
+                        <p class="text-xs text-slate-500">תעריף: ₪${s.rate}/שעה | ${s.phone || 'ללא טלפון'}</p>
+                    </div>
+                    <button onclick="deleteStudent('${s.id}')" class="text-rose-500 hover:text-rose-700 text-xs">מחיקה</button>
+                </div>
+            `).join('') || '<p class="text-slate-400 text-sm">אין תלמידים ברשימה</p>';
+
+            const lsnTable = document.getElementById('lessonsTable');
+            lsnTable.innerHTML = appData.lessons.map(l => {
+                const std = appData.students.find(s => s.id === l.studentId);
+                return `
+                    <tr>
+                        <td class="p-3">${l.date}</td>
+                        <td class="p-3 font-semibold">${std ? std.name : 'תלמיד נמחק'}</td>
+                        <td class="p-3">${l.duration} דק'</td>
+                        <td class="p-3">₪${l.price}</td>
+                        <td class="p-3">
+                            <button onclick="toggleLessonPaid('${l.id}')" class="px-2 py-1 rounded text-xs font-bold ${l.paid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
+                                ${l.paid ? 'שולם' : 'ממתין לתשלום'}
+                            </button>
+                        </td>
+                        <td class="p-3">
+                            <button onclick="deleteLesson('${l.id}')" class="text-rose-500 hover:underline text-xs">מחק</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            const expTable = document.getElementById('expensesTable');
+            expTable.innerHTML = appData.expenses.map(e => `
+                <tr>
+                    <td class="p-3">${e.date}</td>
+                    <td class="p-3 font-semibold">${e.title}</td>
+                    <td class="p-3 text-xs bg-slate-100 rounded">${e.category}</td>
+                    <td class="p-3">₪${e.amountGross}</td>
+                    <td class="p-3">${e.deductiblePercent}%</td>
+                    <td class="p-3 font-bold text-indigo-600">₪${(e.amountGross * (e.deductiblePercent/100)).toFixed(2)}</td>
+                    <td class="p-3">
+                        ${e.receiptUrl ? `<button onclick="showReceipt('${e.receiptUrl}')" class="px-2 py-1 bg-rose-100 text-rose-700 rounded text-xs font-bold hover:bg-rose-200">🖼️ הצג קבלה</button>` : '<span class="text-slate-400 text-xs">אין</span>'}
+                    </td>
+                    <td class="p-3">
+                        <button onclick="deleteExpense('${e.id}')" class="text-rose-500 hover:underline text-xs">מחק</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function exportToCSV() {
+            let csv = '\uFEFFתאריך,תיאור,קטגוריה,סכום ברוטו,% מוכר,סכום מוכר במס\n';
+            appData.expenses.forEach(e => {
+                const ded = e.amountGross * (e.deductiblePercent / 100);
+                csv += `"${e.date}","${e.title}","${e.category}",₪${e.amountGross},${e.deductiblePercent}%,₪${ded}\n`;
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `tax_report_2026.csv`;
+            a.click();
+        }
+    </script>
+</body>
+</html>
