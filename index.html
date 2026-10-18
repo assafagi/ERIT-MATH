@@ -1,1 +1,1053 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ניהול חשבונות - שיעורים פרטיים מתמטיקה | אירית</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase Compat SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
+    <script>
+        // ------------------------------------
+        // הגדרת פונקציות ליבה (PIN + ניווט) מראש
+        // ------------------------------------
+        const SECRET_PIN = "0544";
+
+        window.checkPin = function(e) {
+            if (e) e.preventDefault();
+            const input = document.getElementById("pinInput");
+            const overlay = document.getElementById("pinOverlay");
+            const errorMsg = document.getElementById("pinError");
+
+            if (input && input.value.trim() === SECRET_PIN) {
+                if (overlay) overlay.style.display = "none";
+            } else if (errorMsg) {
+                errorMsg.classList.remove("hidden");
+                if (input) {
+                    input.value = "";
+                    input.focus();
+                }
+            }
+        };
+
+        window.switchTab = function(tabName) {
+            const tabs = ['dashboard', 'students', 'lessons', 'incomes', 'expenses', 'tax'];
+            tabs.forEach(t => {
+                const viewEl = document.getElementById(`view-${t}`);
+                const tabEl = document.getElementById(`tab-${t}`);
+                if (viewEl) viewEl.classList.add('hidden');
+                if (tabEl) tabEl.className = 'flex-1 py-3 font-semibold text-center hover:bg-indigo-600 text-indigo-100';
+            });
+            const targetView = document.getElementById(`view-${tabName}`);
+            const targetTab = document.getElementById(`tab-${tabName}`);
+            if (targetView) targetView.classList.remove('hidden');
+            if (targetTab) targetTab.className = 'flex-1 py-3 font-semibold text-center bg-indigo-800 text-white border-b-2 border-white';
+        };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen pb-12">
+
+    <!-- מסך נעילה ב-PIN -->
+    <div id="pinOverlay" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xs text-center space-y-4">
+            <div class="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto text-xl font-bold">
+                🔒
+            </div>
+            <h2 class="text-xl font-bold text-slate-800">אבטחת אפליקציה</h2>
+            <p class="text-sm text-slate-500">הקש קוד גישה בן 4 ספרות</p>
+
+            <form onsubmit="window.checkPin(event)" class="space-y-3">
+                <input type="password" id="pinInput" maxlength="4" pattern="[0-9]*" inputmode="numeric" placeholder="••••" autofocus required class="w-full text-center text-2xl font-bold tracking-widest border-2 border-slate-200 rounded-xl py-3 focus:border-indigo-600 focus:outline-none transition" />
+                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl transition">כניסה</button>
+            </form>
+
+            <p id="pinError" class="text-xs text-red-500 hidden font-bold">קוד שגוי, נסה שוב</p>
+        </div>
+    </div>
+
+    <!-- סרגל עליון -->
+    <header class="bg-indigo-700 text-white shadow-md sticky top-0 z-40">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold">מערכת ניהול חשבונות</h1>
+                <p class="text-xs text-indigo-200">שיעורים פרטיים במתמטיקה | אירית</p>
+            </div>
+            <div class="text-left">
+                <span id="syncStatus" class="inline-flex items-center gap-1 bg-indigo-800 text-indigo-100 px-2.5 py-1 rounded-full text-xs">
+                    <span class="w-2 h-2 rounded-full bg-yellow-400" id="syncDot"></span>
+                    <span id="syncText">מתחבר...</span>
+                </span>
+            </div>
+        </div>
+        <!-- ניווט בלשוניות -->
+        <div class="flex border-t border-indigo-600 text-sm">
+            <button onclick="window.switchTab('dashboard')" id="tab-dashboard" class="flex-1 py-3 font-semibold text-center bg-indigo-800 text-white border-b-2 border-white">לוח בקרה</button>
+            <button onclick="window.switchTab('students')" id="tab-students" class="flex-1 py-3 font-semibold text-center hover:bg-indigo-600 text-indigo-100">תלמידים</button>
+            <button onclick="window.switchTab('lessons')" id="tab-lessons" class="flex-1 py-3 font-semibold text-center hover:bg-indigo-600 text-indigo-100">יומן שיעורים</button>
+            <button onclick="window.switchTab('incomes')" id="tab-incomes" class="flex-1 py-3 font-semibold text-center hover:bg-indigo-600 text-indigo-100">הכנסות חודשיות</button>
+            <button onclick="window.switchTab('expenses')" id="tab-expenses" class="flex-1 py-3 font-semibold text-center hover:bg-indigo-600 text-indigo-100">ניהול הוצאות</button>
+            <button onclick="window.switchTab('tax')" id="tab-tax" class="flex-1 py-3 font-semibold text-center hover:bg-indigo-600 text-indigo-100">מחשבון מס</button>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 pt-6">
+
+        <!-- 1. לוח בקרה -->
+        <section id="view-dashboard" class="space-y-6">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <p class="text-xs text-slate-500">הכנסות ברוטו (כולל ידני)</p>
+                    <p class="text-2xl font-bold text-slate-800" id="dash-income">₪0</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <p class="text-xs text-slate-500">הוצאות ברוטו (חודשי)</p>
+                    <p class="text-2xl font-bold text-slate-800" id="dash-expenses-gross">₪0</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <p class="text-xs text-slate-500">הוצאה מוכרת במס (חודשי)</p>
+                    <p class="text-2xl font-bold text-indigo-600" id="dash-expenses-deductible">₪0</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <p class="text-xs text-slate-500">רווח נטו חייב במס</p>
+                    <p class="text-2xl font-bold text-emerald-600" id="dash-net-profit">₪0</p>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 space-y-3">
+                <h3 class="font-bold text-slate-800">פעולות מהירות</h3>
+                <div class="flex flex-wrap gap-3">
+                    <button onclick="openModal('lessonModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">+ תיעוד שיעור</button>
+                    <button onclick="openModal('manualIncomeModal')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">+ הכנסה ידנית לפי חודש</button>
+                    <button onclick="openModal('invoiceScanModal')" class="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">📷 סריקת 4 חשבוניות מתמונה</button>
+                    <button onclick="openExpenseModalForNew()" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">+ הוספת הוצאה</button>
+                    <button onclick="openModal('studentModal')" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium transition">+ תלמיד חדש</button>
+                    <button onclick="exportToCSV()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">📊 ייצוא ל-Excel/CSV</button>
+                </div>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <h4 class="font-bold text-slate-800 mb-3">שיעורים אחרונים</h4>
+                    <div class="divide-y divide-slate-100 text-sm" id="dash-recent-lessons">
+                        <p class="text-slate-400 py-2 text-center">אין שיעורים מתועדים</p>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <h4 class="font-bold text-slate-800 mb-3">הוצאות אחרונות</h4>
+                    <div class="divide-y divide-slate-100 text-sm" id="dash-recent-expenses">
+                        <p class="text-slate-400 py-2 text-center">אין הוצאות מתועדות</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. ניהול תלמידים -->
+        <section id="view-students" class="hidden space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-lg font-bold text-slate-800">רשימת תלמידים</h2>
+                <button onclick="openModal('studentModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium">+ תלמיד חדש</button>
+            </div>
+            <div class="grid md:grid-cols-3 gap-4" id="studentsList"></div>
+        </section>
+
+        <!-- 3. יומן שיעורים -->
+        <section id="view-lessons" class="hidden space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-lg font-bold text-slate-800">היסטוריית שיעורים</h2>
+                <button onclick="openModal('lessonModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium">+ תיעוד שיעור</button>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
+                <table class="w-full text-right text-sm">
+                    <thead class="bg-slate-50 text-slate-500 font-medium border-b">
+                        <tr>
+                            <th class="p-3">תאריך</th>
+                            <th class="p-3">תלמיד</th>
+                            <th class="p-3">משך</th>
+                            <th class="p-3">מחיר</th>
+                            <th class="p-3">סטטוס תשלום</th>
+                            <th class="p-3">פעולות</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lessonsTable" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 4. הכנסות חודשיות (ידני) -->
+        <section id="view-incomes" class="hidden space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-lg font-bold text-slate-800">הכנסות לפי חודש (הזנה ידנית)</h2>
+                <button onclick="openModal('manualIncomeModal')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium">+ הכנסה ידנית</button>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
+                <table class="w-full text-right text-sm">
+                    <thead class="bg-slate-50 text-slate-500 font-medium border-b">
+                        <tr>
+                            <th class="p-3">תאריך / חודש</th>
+                            <th class="p-3">תיאור / מקור ההכנסה</th>
+                            <th class="p-3">סכום (₪)</th>
+                            <th class="p-3">פעולות</th>
+                        </tr>
+                    </thead>
+                    <tbody id="incomesTable" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 5. ניהול הוצאות -->
+        <section id="view-expenses" class="hidden space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-lg font-bold text-slate-800">הוצאות עסק מוכרות</h2>
+                <button onclick="openExpenseModalForNew()" class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium">+ הוספת הוצאה</button>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
+                <table class="w-full text-right text-sm">
+                    <thead class="bg-slate-50 text-slate-500 font-medium border-b">
+                        <tr>
+                            <th class="p-3">תאריך</th>
+                            <th class="p-3">תיאור/ספק</th>
+                            <th class="p-3">קטגוריה</th>
+                            <th class="p-3">סכום ברוטו</th>
+                            <th class="p-3">% מוכר</th>
+                            <th class="p-3">סכום מוכר במס</th>
+                            <th class="p-3">קבלה / חשבונית</th>
+                            <th class="p-3">פעולות</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expensesTable" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 6. מחשבון מס משוער -->
+        <section id="view-tax" class="hidden space-y-6">
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 space-y-4">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800">מחשבון מס שנתי — עוסק פטור</h2>
+                    <p class="text-sm text-slate-500 mt-1">אומדן למס הכנסה, ביטוח לאומי ומס בריאות לפי הנתונים שנרשמו בתוכנה.</p>
+                </div>
+                <div class="grid md:grid-cols-3 gap-4">
+                    <div><label class="block text-xs font-semibold text-slate-600 mb-1" for="taxYear">שנת מס</label><select id="taxYear" class="w-full p-2 border rounded-lg" onchange="updateTaxCalculator()"><option value="2026">2026</option><option value="2025">2025</option><option value="2024">2024</option></select></div>
+                    <div><label class="block text-xs font-semibold text-slate-600 mb-1" for="taxCreditPoints">נקודות זיכוי במס הכנסה</label><input id="taxCreditPoints" type="number" min="0" max="20" step="0.25" value="2.25" class="w-full p-2 border rounded-lg" oninput="saveTaxSettingsAndCalculate()"></div>
+                    <div><label class="block text-xs font-semibold text-slate-600 mb-1" for="taxOtherIncome">הכנסה שנתית נוספת מיגיעה אישית, למשל משכורת (₪)</label><input id="taxOtherIncome" type="number" min="0" step="100" value="0" class="w-full p-2 border rounded-lg" oninput="saveTaxSettingsAndCalculate()"></div>
+                </div>
+                <p class="text-xs text-slate-500">הכנסה נוספת, למשל משכורת, משפיעה על מדרגת המס. הזן הכנסה שנתית חייבת לפני נקודות זיכוי. מס ההכנסה שמוצג בהמשך הוא אומדן לחלק הנוסף המיוחס לעסק; בפועל ניכויי מס מהמשכורת וזיכויים אישיים יכולים לשנות את הסכום.</p>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div class="bg-white p-4 rounded-xl shadow-sm border"><p class="text-xs text-slate-500">הכנסות עסק שנרשמו בשנה</p><p id="taxIncome" class="text-xl font-bold">₪0</p></div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border"><p class="text-xs text-slate-500">הוצאות מוכרות לפי התוכנה</p><p id="taxExpenses" class="text-xl font-bold">₪0</p></div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border"><p class="text-xs text-slate-500">רווח עסקי משוער</p><p id="taxProfit" class="text-xl font-bold text-emerald-700">₪0</p></div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border"><p class="text-xs text-slate-500">מס הכנסה משוער המיוחס לעסק</p><p id="taxIncomeTax" class="text-xl font-bold">₪0</p></div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border"><p class="text-xs text-slate-500">ביטוח לאומי משוער</p><p id="taxNational" class="text-xl font-bold">₪0</p></div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border"><p class="text-xs text-slate-500">מס בריאות משוער</p><p id="taxHealth" class="text-xl font-bold">₪0</p></div>
+            </div>
+            <div class="bg-indigo-50 p-5 rounded-xl border border-indigo-100">
+                <div class="grid md:grid-cols-3 gap-4 items-center">
+                    <div><p class="text-sm text-indigo-900">סה״כ מסים וביטוחים משוער</p><p id="taxTotal" class="text-2xl font-bold text-indigo-900">₪0</p></div>
+                    <div><p class="text-sm text-indigo-900">מומלץ לשמור בצד בכל חודש</p><p id="taxMonthlyReserve" class="text-2xl font-bold text-indigo-900">₪0</p></div>
+                    <div><p class="text-sm text-indigo-900">רווח עסקי לאחר אומדן המסים</p><p id="taxAfter" class="text-2xl font-bold text-indigo-900">₪0</p></div>
+                </div>
+            </div>
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900 space-y-2">
+                <p class="font-bold">חשוב לדעת</p>
+                <ul class="list-disc pr-5 space-y-1">
+                    <li>זהו אומדן לתכנון בלבד, לא שומת מס ולא תחליף לרואה חשבון או יועץ מס.</li>
+                    <li>החישוב מניח עצמאי שזו הכנסתו היחידה לצורך ביטוח לאומי. עבודה כשכיר, גיל, מעמד בביטוח לאומי, הפקדות לפנסיה, זיכויים נוספים וניכויים עשויים לשנות את התוצאה.</li>
+                    <li>הוצאות מוכרות ואחוזי ההכרה נלקחים כפי שנרשמו בתוכנה; יש לוודא שהם מתאימים לכללי המס. אין כאן חישוב מע״מ.</li>
+                    <li>ההכנסות כוללות את כל השיעורים שנרשמו בשנה, גם אם טרם שולמו, וכן הכנסות ידניות. אין להזין הכנסה ידנית שכבר נכללה בסכומי השיעורים, כדי למנוע כפל.</li>
+                    <li>מדרגות המס לשנת 2026 מעודכנות; החישוב לשנים קודמות משתמש במדרגות 2026 כאומדן בלבד.</li>
+                </ul>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- דיאלוג תלמיד -->
+    <dialog id="studentModal" class="p-6 bg-white rounded-xl shadow-xl max-w-md w-full backdrop:bg-black/50">
+        <form id="studentForm" onsubmit="saveStudent(event)" class="space-y-4">
+            <h3 class="font-bold text-slate-800 text-lg">הוספת / עריכת תלמיד</h3>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">שם מלא</label>
+                <input type="text" id="stdName" required class="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">מחיר שעתי מומלץ (₪)</label>
+                <input type="number" id="stdRate" required value="150" class="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">טלפון/איש קשר</label>
+                <input type="text" id="stdPhone" class="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div class="flex gap-2 justify-end pt-2">
+                <button type="button" onclick="closeModal('studentModal')" class="px-4 py-2 text-sm border rounded-lg">ביטול</button>
+                <button type="submit" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg font-medium">שמירה</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- דיאלוג שיעור -->
+    <dialog id="lessonModal" class="p-6 bg-white rounded-xl shadow-xl max-w-md w-full backdrop:bg-black/50">
+        <form id="lessonForm" onsubmit="saveLesson(event)" class="space-y-4">
+            <h3 class="font-bold text-slate-800 text-lg">תיעוד שיעור</h3>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">תאריך</label>
+                <input type="date" id="lsnDate" required class="w-full p-2 border rounded-lg text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">תלמיד</label>
+                <select id="lsnStudent" required class="w-full p-2 border rounded-lg text-sm"></select>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">משך (בדקות)</label>
+                    <input type="number" id="lsnDuration" value="60" required class="w-full p-2 border rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">מחיר לשיעור (₪)</label>
+                    <input type="number" id="lsnPrice" required class="w-full p-2 border rounded-lg text-sm">
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">סטטוס תשלום</label>
+                <select id="lsnPaid" class="w-full p-2 border rounded-lg text-sm">
+                    <option value="true">שולם</option>
+                    <option value="false">טרם שולם</option>
+                </select>
+            </div>
+            <div class="flex gap-2 justify-end pt-2">
+                <button type="button" onclick="closeModal('lessonModal')" class="px-4 py-2 text-sm border rounded-lg">ביטול</button>
+                <button type="submit" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg font-medium">שמירה</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- דיאלוג הכנסה ידנית -->
+    <dialog id="manualIncomeModal" class="p-6 bg-white rounded-xl shadow-xl max-w-md w-full backdrop:bg-black/50">
+        <form id="manualIncomeForm" onsubmit="saveManualIncome(event)" class="space-y-4">
+            <h3 class="font-bold text-slate-800 text-lg">הוספת הכנסה ידנית לפי חודש</h3>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">תאריך / חודש</label>
+                <input type="date" id="incDate" required class="w-full p-2 border rounded-lg text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">תיאור ההכנסה</label>
+                <input type="text" id="incTitle" required placeholder="למשל: סך הכנסות חודשי" class="w-full p-2 border rounded-lg text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">סכום ההכנסה (₪)</label>
+                <input type="number" id="incAmount" step="0.01" required class="w-full p-2 border rounded-lg text-sm">
+            </div>
+            <div class="flex gap-2 justify-end pt-2">
+                <button type="button" onclick="closeModal('manualIncomeModal')" class="px-4 py-2 text-sm border rounded-lg">ביטול</button>
+                <button type="submit" class="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg font-medium">שמירה</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- דיאלוג הוצאה (הוספה/עריכה) -->
+    <dialog id="expenseModal" class="p-6 bg-white rounded-xl shadow-xl max-w-md w-full backdrop:bg-black/50">
+        <form id="expenseForm" onsubmit="saveExpense(event)" class="space-y-4">
+            <h3 class="font-bold text-slate-800 text-lg" id="expenseModalTitle">רישום הוצאה מוכרת</h3>
+            
+            <input type="hidden" id="expId" value="">
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">תאריך</label>
+                <input type="date" id="expDate" required class="w-full p-2 border rounded-lg text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">תיאור ההוצאה / שם ספק</label>
+                <input type="text" id="expTitle" required placeholder="למשל: דלק לנסיעה, ספר לימוד" class="w-full p-2 border rounded-lg text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">קטגוריית הוצאה</label>
+                <select id="expCategory" onchange="updateDeductibleRatio()" class="w-full p-2 border rounded-lg text-sm">
+                    <option value="materials" data-percent="100">חומרי לימוד וספרים (100% מוכר)</option>
+                    <option value="travel" data-percent="45">דלק ותחבורה לשיעורים (45% מוכר)</option>
+                    <option value="office" data-percent="25">משרד ביתי/חשמל/אינטרנט (25% מוכר)</option>
+                    <option value="tech" data-percent="100">תוכנות, פרסום ושיווק (100% מוכר)</option>
+                </select>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">סכום ברוטו (₪)</label>
+                    <input type="number" id="expAmountGross" step="0.01" required class="w-full p-2 border rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">% מוכר במס</label>
+                    <input type="number" id="expPercent" readonly class="w-full p-2 border rounded-lg text-sm bg-slate-100 text-slate-600 font-bold">
+                </div>
+            </div>
+            
+            <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">צילום/קובץ קבלה (תמונה מנייד או קובץ PDF)</label>
+                <input
+                  type="file"
+                  id="receiptFile"
+                  name="receiptFile"
+                  accept="image/*,.pdf"
+                  class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                />
+                <p id="existingReceiptNotice" class="text-xs text-slate-500 mt-1 hidden">קיימת כבר קבלה שמורה. בחירת קובץ חדש תחליף אותה.</p>
+            </div>
+
+            <div class="flex gap-2 justify-end pt-2">
+                <button type="button" onclick="closeModal('expenseModal')" class="px-4 py-2 text-sm border rounded-lg">ביטול</button>
+                <button type="submit" class="px-4 py-2 text-sm bg-rose-600 text-white rounded-lg font-medium">שמירה</button>
+            </div>
+        </form>
+    </dialog>
+
+
+    <!-- דיאלוג סריקת חשבוניות באמצעות OCR -->
+    <dialog id="invoiceScanModal" class="p-5 bg-white rounded-xl shadow-xl max-w-3xl w-full backdrop:bg-black/50">
+        <div class="space-y-4">
+            <h3 class="font-bold text-slate-800 text-lg">סריקת חשבוניות מתמונה</h3>
+            <p class="text-sm text-slate-600">העלה תמונה ברורה שבה מופיעות עד 4 חשבוניות. התוכנה תנסה לזהות את מספרי החשבוניות והסכומים. חשוב לבדוק ולתקן את הנתונים לפני הייבוא.</p>
+            <label class="block text-sm font-semibold text-slate-700">בחירת תמונה</label>
+            <input id="invoiceImageInput" type="file" accept="image/*" capture="environment" class="w-full text-sm border rounded-lg p-2">
+            <div id="invoiceOcrStatus" class="text-sm text-indigo-700" role="status"></div>
+            <div id="invoiceImagePreview" class="hidden max-h-64 overflow-auto border rounded-lg p-2 bg-slate-50 text-center"></div>
+            <div id="invoiceOcrResults" class="space-y-3"></div>
+            <details id="invoiceRawTextWrap" class="hidden">
+                <summary class="cursor-pointer text-sm text-slate-600">הצג טקסט שזוהה בתמונה (לבדיקה)</summary>
+                <textarea id="invoiceRawText" rows="5" class="w-full border rounded-lg p-2 text-xs mt-2" readonly></textarea>
+            </details>
+            <div class="flex flex-wrap gap-2 justify-end pt-2">
+                <button type="button" onclick="closeModal('invoiceScanModal')" class="px-4 py-2 text-sm border rounded-lg">ביטול</button>
+                <button type="button" id="importScannedInvoicesBtn" onclick="importScannedInvoices()" disabled class="px-4 py-2 text-sm bg-violet-600 text-white rounded-lg font-medium disabled:opacity-40">ייבוא הכנסות לתוכנה</button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- דיאלוג לצפייה בתמונת קבלה או PDF -->
+    <dialog id="receiptModal" class="p-4 bg-white rounded-xl shadow-xl max-w-2xl w-full backdrop:bg-black/50 text-center space-y-4">
+        <h3 class="font-bold text-slate-800 text-lg">צפייה במסמך קבלה / חשבונית</h3>
+        <div id="receiptViewerContainer" class="max-h-[70vh] min-h-[300px] overflow-auto border rounded-lg flex justify-center items-center bg-slate-50 p-2">
+        </div>
+        <button onclick="closeModal('receiptModal')" class="w-full py-2 bg-slate-800 text-white font-medium text-sm rounded-lg">סגור</button>
+    </dialog>
+
+    <script>
+        // 1. הגדרות Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDc119j8fAieAf8cCS_FeL403i8NW6ctNg",
+            authDomain: "erit-math.firebaseapp.com",
+            databaseURL: "https://erit-math-default-rtdb.firebaseio.com",
+            projectId: "erit-math",
+            storageBucket: "erit-math.firebasestorage.app",
+            messagingSenderId: "816878221040",
+            appId: "1:816878221040:web:35b40a6e4c97296cda7435",
+            measurementId: "G-470GKV65RY"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database().ref('irit_data');
+
+        let appData = { students: [], lessons: [], expenses: [], manualIncomes: [], taxSettings: { creditPoints: 2.25, otherIncome: 0 } };
+
+        db.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                appData = {
+                    students: data.students || [],
+                    lessons: data.lessons || [],
+                    expenses: data.expenses || [],
+                    manualIncomes: data.manualIncomes || [],
+                    taxSettings: data.taxSettings || { creditPoints: 2.25, otherIncome: 0 }
+                };
+            }
+            updateSyncStatus(true);
+            renderAll();
+            loadTaxSettings();
+        }, (error) => {
+            console.error("Firebase Sync Error:", error);
+            updateSyncStatus(false);
+        });
+
+        function saveDataToCloud() {
+            updateSyncStatus('saving');
+            db.set(appData).then(() => {
+                updateSyncStatus(true);
+            }).catch(err => {
+                console.error("Error saving data:", err);
+                updateSyncStatus(false);
+            });
+        }
+
+        function updateSyncStatus(status) {
+            const dot = document.getElementById('syncDot');
+            const text = document.getElementById('syncText');
+            if (status === true) {
+                dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+                text.innerText = 'מסתנכרן בזמן אמת';
+            } else if (status === 'saving') {
+                dot.className = 'w-2 h-2 rounded-full bg-yellow-400 animate-pulse';
+                text.innerText = 'שומר שינויים...';
+            } else {
+                dot.className = 'w-2 h-2 rounded-full bg-rose-500';
+                text.innerText = 'שגיאת חיבור';
+            }
+        }
+
+        function openModal(id) {
+            if(id === 'lessonModal') populateStudentSelect();
+            if(id === 'expenseModal') updateDeductibleRatio();
+            document.getElementById(id).showModal();
+        }
+        function closeModal(id) {
+            document.getElementById(id).close();
+        }
+
+        function saveStudent(e) {
+            e.preventDefault();
+            const name = document.getElementById('stdName').value;
+            const rate = parseFloat(document.getElementById('stdRate').value) || 0;
+            const phone = document.getElementById('stdPhone').value;
+
+            appData.students.push({ id: Date.now().toString(), name, rate, phone });
+            saveDataToCloud();
+            closeModal('studentModal');
+            document.getElementById('studentForm').reset();
+        }
+
+        function deleteStudent(id) {
+            if(confirm('האם למחוק תלמיד זה?')) {
+                appData.students = appData.students.filter(s => s.id !== id);
+                saveDataToCloud();
+            }
+        }
+
+        function saveLesson(e) {
+            e.preventDefault();
+            const date = document.getElementById('lsnDate').value;
+            const studentId = document.getElementById('lsnStudent').value;
+            const duration = parseInt(document.getElementById('lsnDuration').value) || 60;
+            const price = parseFloat(document.getElementById('lsnPrice').value) || 0;
+            const paid = document.getElementById('lsnPaid').value === 'true';
+
+            appData.lessons.push({ id: Date.now().toString(), date, studentId, duration, price, paid });
+            saveDataToCloud();
+            closeModal('lessonModal');
+            document.getElementById('lessonForm').reset();
+        }
+
+        function saveManualIncome(e) {
+            e.preventDefault();
+            const date = document.getElementById('incDate').value;
+            const title = document.getElementById('incTitle').value;
+            const amount = parseFloat(document.getElementById('incAmount').value) || 0;
+
+            if (!appData.manualIncomes) appData.manualIncomes = [];
+
+            appData.manualIncomes.push({
+                id: Date.now().toString(),
+                date,
+                title,
+                amount
+            });
+
+            saveDataToCloud();
+            closeModal('manualIncomeModal');
+            document.getElementById('manualIncomeForm').reset();
+        }
+
+        function deleteManualIncome(id) {
+            if(confirm('האם למחוק הכנסה זו?')) {
+                appData.manualIncomes = appData.manualIncomes.filter(inc => inc.id !== id);
+                saveDataToCloud();
+            }
+        }
+
+        function toggleLessonPaid(id) {
+            const lesson = appData.lessons.find(l => l.id === id);
+            if(lesson) {
+                lesson.paid = !lesson.paid;
+                saveDataToCloud();
+            }
+        }
+
+        function deleteLesson(id) {
+            if(confirm('האם למחוק שיעור זה?')) {
+                appData.lessons = appData.lessons.filter(l => l.id !== id);
+                saveDataToCloud();
+            }
+        }
+
+        function updateDeductibleRatio() {
+            const select = document.getElementById('expCategory');
+            const percent = select.options[select.selectedIndex].getAttribute('data-percent');
+            document.getElementById('expPercent').value = percent;
+        }
+
+        function openExpenseModalForNew() {
+            document.getElementById('expenseForm').reset();
+            document.getElementById('expId').value = '';
+            document.getElementById('expenseModalTitle').innerText = 'רישום הוצאה מוכרת';
+            document.getElementById('existingReceiptNotice').classList.add('hidden');
+            openModal('expenseModal');
+        }
+
+        function editExpense(id) {
+            const expense = appData.expenses.find(e => e.id === id);
+            if (!expense) return;
+
+            document.getElementById('expId').value = expense.id;
+            document.getElementById('expDate').value = expense.date;
+            document.getElementById('expTitle').value = expense.title;
+            document.getElementById('expCategory').value = expense.category;
+            document.getElementById('expAmountGross').value = expense.amountGross;
+            document.getElementById('expPercent').value = expense.deductiblePercent;
+            document.getElementById('receiptFile').value = '';
+
+            document.getElementById('expenseModalTitle').innerText = 'עריכת הוצאה';
+            
+            if (expense.receiptUrl) {
+                document.getElementById('existingReceiptNotice').classList.remove('hidden');
+            } else {
+                document.getElementById('existingReceiptNotice').classList.add('hidden');
+            }
+
+            openModal('expenseModal');
+        }
+
+        function saveExpense(e) {
+            e.preventDefault();
+            const expId = document.getElementById('expId').value;
+            const date = document.getElementById('expDate').value;
+            const title = document.getElementById('expTitle').value;
+            const category = document.getElementById('expCategory').value;
+            const amountGross = parseFloat(document.getElementById('expAmountGross').value) || 0;
+            const deductiblePercent = parseFloat(document.getElementById('expPercent').value) || 100;
+            const fileInput = document.getElementById('receiptFile');
+
+            let existingExpense = expId ? appData.expenses.find(item => item.id === expId) : null;
+
+            const processSave = (receiptUrl) => {
+                if (existingExpense) {
+                    existingExpense.date = date;
+                    existingExpense.title = title;
+                    existingExpense.category = category;
+                    existingExpense.amountGross = amountGross;
+                    existingExpense.deductiblePercent = deductiblePercent;
+                    if (receiptUrl !== null) existingExpense.receiptUrl = receiptUrl;
+                } else {
+                    appData.expenses.push({
+                        id: Date.now().toString(),
+                        date,
+                        title,
+                        category,
+                        amountGross,
+                        deductiblePercent,
+                        receiptUrl: receiptUrl || ''
+                    });
+                }
+
+                saveDataToCloud();
+                closeModal('expenseModal');
+                document.getElementById('expenseForm').reset();
+            };
+
+            if (fileInput && fileInput.files && fileInput.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    processSave(evt.target.result);
+                };
+                reader.readAsDataURL(fileInput.files[0]);
+            } else {
+                processSave(existingExpense ? null : '');
+            }
+        }
+
+        function showReceipt(url) {
+            const container = document.getElementById('receiptViewerContainer');
+            if (url.startsWith('data:application/pdf') || url.endsWith('.pdf')) {
+                container.innerHTML = `<iframe src="${url}" class="w-full h-[60vh] rounded border-0"></iframe>`;
+            } else {
+                container.innerHTML = `<img src="${url}" alt="קבלה" class="max-w-full max-h-[60vh] h-auto rounded shadow-sm object-contain">`;
+            }
+            openModal('receiptModal');
+        }
+
+        function deleteExpense(id) {
+            if(confirm('האם למחוק הוצאה זו?')) {
+                appData.expenses = appData.expenses.filter(e => e.id !== id);
+                saveDataToCloud();
+            }
+        }
+
+        function populateStudentSelect() {
+            const select = document.getElementById('lsnStudent');
+            select.innerHTML = appData.students.map(s => `<option value="${s.id}">${s.name} (${s.rate}₪/שעה)</option>`).join('');
+            if(appData.students.length > 0) {
+                document.getElementById('lsnPrice').value = appData.students[0].rate;
+            }
+        }
+
+        function renderAll() {
+            let lessonsIncome = appData.lessons.reduce((acc, l) => acc + (l.paid ? l.price : 0), 0);
+            let manualIncome = (appData.manualIncomes || []).reduce((acc, i) => acc + (i.amount || 0), 0);
+            let totalIncome = lessonsIncome + manualIncome;
+
+            let totalGrossExpenses = appData.expenses.reduce((acc, e) => acc + e.amountGross, 0);
+            let totalDeductibleExpenses = appData.expenses.reduce((acc, e) => acc + (e.amountGross * (e.deductiblePercent / 100)), 0);
+            let netTaxableProfit = totalIncome - totalDeductibleExpenses;
+
+            document.getElementById('dash-income').innerText = `₪${totalIncome.toLocaleString()}`;
+            document.getElementById('dash-expenses-gross').innerText = `₪${totalGrossExpenses.toLocaleString()}`;
+            document.getElementById('dash-expenses-deductible').innerText = `₪${totalDeductibleExpenses.toLocaleString()}`;
+            document.getElementById('dash-net-profit').innerText = `₪${netTaxableProfit.toLocaleString()}`;
+            updateTaxCalculator();
+
+            const stdList = document.getElementById('studentsList');
+            stdList.innerHTML = appData.students.map(s => `
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center">
+                    <div>
+                        <h4 class="font-bold text-slate-800">${s.name}</h4>
+                        <p class="text-xs text-slate-500">תעריף: ₪${s.rate}/שעה | ${s.phone || 'ללא טלפון'}</p>
+                    </div>
+                    <button onclick="deleteStudent('${s.id}')" class="text-rose-500 hover:text-rose-700 text-xs">מחיקה</button>
+                </div>
+            `).join('') || '<p class="text-slate-400 text-sm">אין תלמידים ברשימה</p>';
+
+            const lsnTable = document.getElementById('lessonsTable');
+            lsnTable.innerHTML = appData.lessons.map(l => {
+                const std = appData.students.find(s => s.id === l.studentId);
+                return `
+                    <tr>
+                        <td class="p-3">${l.date}</td>
+                        <td class="p-3 font-semibold">${std ? std.name : 'תלמיד נמחק'}</td>
+                        <td class="p-3">${l.duration} דק'</td>
+                        <td class="p-3">₪${l.price}</td>
+                        <td class="p-3">
+                            <button onclick="toggleLessonPaid('${l.id}')" class="px-2 py-1 rounded text-xs font-bold ${l.paid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
+                                ${l.paid ? 'שולם' : 'ממתין לתשלום'}
+                            </button>
+                        </td>
+                        <td class="p-3">
+                            <button onclick="deleteLesson('${l.id}')" class="text-rose-500 hover:underline text-xs">מחק</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            const incTable = document.getElementById('incomesTable');
+            if (incTable) {
+                incTable.innerHTML = (appData.manualIncomes || []).map(inc => `
+                    <tr>
+                        <td class="p-3">${inc.date}</td>
+                        <td class="p-3 font-semibold">${inc.title}</td>
+                        <td class="p-3 font-bold text-emerald-600">₪${inc.amount.toLocaleString()}</td>
+                        <td class="p-3">
+                            <button onclick="deleteManualIncome('${inc.id}')" class="text-rose-500 hover:underline text-xs">מחק</button>
+                        </td>
+                    </tr>
+                `).join('') || '<tr><td colspan="4" class="p-3 text-center text-slate-400 text-xs">אין הכנסות ידניות מתועדות</td></tr>';
+            }
+
+            const expTable = document.getElementById('expensesTable');
+            expTable.innerHTML = appData.expenses.map(e => {
+                const isPdf = e.receiptUrl && (e.receiptUrl.startsWith('data:application/pdf') || e.receiptUrl.endsWith('.pdf'));
+                const btnLabel = isPdf ? '📄 הצג PDF' : '🖼️ הצג תמונה';
+                
+                return `
+                <tr>
+                    <td class="p-3">${e.date}</td>
+                    <td class="p-3 font-semibold">${e.title}</td>
+                    <td class="p-3 text-xs bg-slate-100 rounded">${e.category}</td>
+                    <td class="p-3">₪${e.amountGross}</td>
+                    <td class="p-3">${e.deductiblePercent}%</td>
+                    <td class="p-3 font-bold text-indigo-600">₪${(e.amountGross * (e.deductiblePercent/100)).toFixed(2)}</td>
+                    <td class="p-3">
+                        ${e.receiptUrl ? `<button onclick="showReceipt('${e.receiptUrl}')" class="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs font-bold hover:bg-indigo-200">${btnLabel}</button>` : '<span class="text-slate-400 text-xs">אין</span>'}
+                    </td>
+                    <td class="p-3 flex gap-2">
+                        <button onclick="editExpense('${e.id}')" class="text-indigo-600 hover:underline text-xs font-semibold">ערוך</button>
+                        <button onclick="deleteExpense('${e.id}')" class="text-rose-500 hover:underline text-xs">מחק</button>
+                    </td>
+                </tr>
+            `}).join('');
+        }
+
+        // מחשבון מס משוער. מדרגות מס הכנסה 2026; ביטוח לאומי/בריאות לפי שיעורי 2026.
+        function moneyILS(value) {
+            return '₪' + Math.round(Number(value) || 0).toLocaleString('he-IL');
+        }
+        function getProgressiveIncomeTax(income) {
+            const brackets = [
+                { limit: 84120, rate: 0.10 },
+                { limit: 120720, rate: 0.14 },
+                { limit: 228000, rate: 0.20 },
+                { limit: 301200, rate: 0.31 },
+                { limit: 560280, rate: 0.35 },
+                { limit: 721560, rate: 0.47 },
+                { limit: Infinity, rate: 0.50 }
+            ];
+            let tax = 0, previous = 0, remaining = Math.max(0, Number(income) || 0);
+            for (const b of brackets) {
+                const slice = Math.max(0, Math.min(remaining, b.limit - previous));
+                tax += slice * b.rate;
+                remaining -= slice;
+                previous = b.limit;
+                if (remaining <= 0) break;
+            }
+            return tax;
+        }
+        function estimateNationalAndHealth(monthlyIncome) {
+            // שיעורי 2026 לעצמאי בגיל העבודה: בסיס מופחת עד 7,703 ₪, תקרה 51,910 ₪.
+            const m = Math.max(0, Math.min(Number(monthlyIncome) || 0, 51910));
+            const low = Math.min(m, 7703), high = Math.max(0, m - 7703);
+            return {
+                national: (low * 0.0447 + high * 0.1283) * 12,
+                health: (low * 0.0323 + high * 0.0517) * 12
+            };
+        }
+        function loadTaxSettings() {
+            const settings = appData.taxSettings || { creditPoints: 2.25, otherIncome: 0 };
+            const points = document.getElementById('taxCreditPoints');
+            const other = document.getElementById('taxOtherIncome');
+            if (points && document.activeElement !== points) points.value = settings.creditPoints ?? 2.25;
+            if (other && document.activeElement !== other) other.value = settings.otherIncome ?? 0;
+            updateTaxCalculator();
+        }
+        function saveTaxSettingsAndCalculate() {
+            appData.taxSettings = {
+                creditPoints: Math.max(0, Number(document.getElementById('taxCreditPoints').value) || 0),
+                otherIncome: Math.max(0, Number(document.getElementById('taxOtherIncome').value) || 0)
+            };
+            saveDataToCloud();
+            updateTaxCalculator();
+        }
+        function updateTaxCalculator() {
+            const yearEl = document.getElementById('taxYear');
+            if (!yearEl) return;
+            const year = Number(yearEl.value) || 2026;
+            const lessons = (appData.lessons || []).filter(l => String(l.date || '').startsWith(String(year)));
+            const manual = (appData.manualIncomes || []).filter(i => String(i.date || '').startsWith(String(year)));
+            const expenses = (appData.expenses || []).filter(e => String(e.date || '').startsWith(String(year)));
+            const income = lessons.reduce((sum, l) => sum + (Number(l.price) || 0), 0) + manual.reduce((sum, i) => sum + (Number(i.amount) || 0), 0);
+            const deductible = expenses.reduce((sum, e) => sum + (Number(e.amountGross) || 0) * (Number(e.deductiblePercent) || 0) / 100, 0);
+            const profit = Math.max(0, income - deductible);
+            const otherIncome = Math.max(0, Number(document.getElementById('taxOtherIncome')?.value) || 0);
+            const points = Math.max(0, Number(document.getElementById('taxCreditPoints')?.value) || 0);
+            const insurance = estimateNationalAndHealth(profit / 12);
+            // בקירוב, 52% מרכיב הביטוח הלאומי (לא מס בריאות) ניתן לניכוי בחישוב ההכנסה למס.
+            const taxableIncome = Math.max(0, profit + otherIncome - insurance.national * 0.52);
+            const pointValue = year === 2026 ? 2904 : 2904; // ערך נקודת זיכוי שנתית משוער; ניתן לעדכון לפי שנת המס.
+            const totalIncomeTaxAfterCredits = Math.max(0, getProgressiveIncomeTax(taxableIncome) - points * pointValue);
+            const otherIncomeTaxAfterCredits = Math.max(0, getProgressiveIncomeTax(otherIncome) - points * pointValue);
+            // אומדן המס הנוסף שמיוחס לעסק, בהתחשב בהכנסה נוספת שהוזנה.
+            const incomeTax = Math.max(0, totalIncomeTaxAfterCredits - otherIncomeTaxAfterCredits);
+            const totalTax = incomeTax + insurance.national + insurance.health;
+            const ids = {
+                taxIncome: income, taxExpenses: deductible, taxProfit: profit,
+                taxIncomeTax: incomeTax, taxNational: insurance.national,
+                taxHealth: insurance.health, taxTotal: totalTax,
+                taxMonthlyReserve: totalTax / 12, taxAfter: profit - totalTax
+            };
+            Object.entries(ids).forEach(([id, value]) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = moneyILS(value);
+            });
+        }
+
+
+        // סריקת חשבוניות: OCR בצד הדפדפן, עם אישור ידני לפני שמירה.
+        let scannedInvoiceRows = [];
+
+        function cleanInvoiceNumber(value) {
+            return String(value || '').replace(/[^\dA-Za-zא-ת\/-]/g, '').slice(0, 40);
+        }
+
+        function parseInvoiceOcr(text) {
+            const normalized = (text || '').replace(/\u00a0/g, ' ');
+            const lines = normalized.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+
+            // מספרי חשבוניות: מחפשים מספר ליד מילות זיהוי נפוצות.
+            const invoiceNumbers = [];
+            const numberPatterns = [
+                /(?:מספר\s*חשבונית|מס['׳]?\s*חשבונית|חשבונית\s*(?:מספר|מס['׳]?)?|invoice\s*(?:no\.?|number|#)?|מס['׳]?\s*קבלה)\s*[:#\-]?\s*([A-Zא-ת0-9][A-Zא-ת0-9\/-]{2,})/ig,
+                /(?:מספר|מס['׳]?)\s*[:#]?\s*(\d{4,})/ig
+            ];
+            for (const line of lines) {
+                for (const pattern of numberPatterns) {
+                    pattern.lastIndex = 0;
+                    let m;
+                    while ((m = pattern.exec(line)) !== null) {
+                        const n = cleanInvoiceNumber(m[1]);
+                        if (n && !invoiceNumbers.includes(n)) invoiceNumbers.push(n);
+                    }
+                }
+            }
+
+            // סכומים: מזהים סכומים עם מטבע או שורות שמכילות סה"כ/לתשלום.
+            const amountCandidates = [];
+            const amountRegex = /(?:₪|ש["׳]?ח|NIS|ILS)?\s*([0-9]{1,3}(?:[, ]?[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]+[.,][0-9]{2})\s*(?:₪|ש["׳]?ח|NIS|ILS)?/gi;
+            for (const line of lines) {
+                const isAmountLine = /(סה.?כ|לתשלום|סכום לתשלום|כולל מע.?מ|total|amount due|grand total|מחיר)/i.test(line);
+                amountRegex.lastIndex = 0;
+                let m;
+                while ((m = amountRegex.exec(line)) !== null) {
+                    const raw = m[1].replace(/[ ,]/g, '').replace(/(\d)[,](\d{2})$/, '$1.$2');
+                    const n = Number(raw);
+                    if (!Number.isFinite(n) || n <= 0 || n > 10000000) continue;
+                    // מסננים שנים ומספרים קצרים שאינם סכומים, אלא אם נמצאו בשורת סה"כ.
+                    if (!isAmountLine && (n < 10 || (Number.isInteger(n) && n >= 1900 && n <= 2100))) continue;
+                    amountCandidates.push({ amount: Math.round(n * 100) / 100, score: isAmountLine ? 3 : 1, line });
+                }
+            }
+
+            // בוחרים את הסכום בעל העדיפות הגבוהה ביותר בכל שורת טקסט, ומסירים כפילויות.
+            const chosenAmounts = [];
+            for (const candidate of amountCandidates.sort((a,b) => b.score - a.score)) {
+                if (!chosenAmounts.some(x => Math.abs(x.amount - candidate.amount) < 0.001)) chosenAmounts.push(candidate);
+            }
+            const amounts = chosenAmounts.slice(0, 4).map(x => x.amount);
+            while (amounts.length < 4) amounts.push('');
+
+            return Array.from({length: 4}, (_, i) => ({
+                invoiceNo: invoiceNumbers[i] || '',
+                amount: amounts[i] === undefined ? '' : amounts[i],
+                date: new Date().toISOString().slice(0,10)
+            }));
+        }
+
+        function renderScannedInvoiceRows(rows) {
+            scannedInvoiceRows = rows;
+            const container = document.getElementById('invoiceOcrResults');
+            container.innerHTML = '<p class="font-semibold text-sm text-slate-700">בדוק את הנתונים שזוהו — ניתן לערוך כל שדה:</p>' +
+                rows.map((row, i) => `
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 p-3 border rounded-lg bg-slate-50">
+                        <div>
+                            <label class="block text-xs text-slate-600 mb-1">מספר חשבונית ${i+1}</label>
+                            <input type="text" data-invoice-field="invoiceNo" data-invoice-index="${i}" value="${String(row.invoiceNo).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}" class="w-full border rounded-md p-2 text-sm" placeholder="מספר חשבונית">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-600 mb-1">סכום לחיוב (₪)</label>
+                            <input type="number" min="0" step="0.01" data-invoice-field="amount" data-invoice-index="${i}" value="${row.amount}" class="w-full border rounded-md p-2 text-sm" placeholder="0.00">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-600 mb-1">תאריך חשבונית</label>
+                            <input type="date" data-invoice-field="date" data-invoice-index="${i}" value="${row.date}" class="w-full border rounded-md p-2 text-sm">
+                        </div>
+                    </div>`).join('');
+            container.querySelectorAll('[data-invoice-field]').forEach(input => {
+                input.addEventListener('input', () => {
+                    const i = Number(input.dataset.invoiceIndex);
+                    scannedInvoiceRows[i][input.dataset.invoiceField] = input.value;
+                    document.getElementById('importScannedInvoicesBtn').disabled =
+                        !scannedInvoiceRows.some(r => r.amount !== '' && Number(r.amount) > 0);
+                });
+            });
+            document.getElementById('importScannedInvoicesBtn').disabled =
+                !rows.some(r => r.amount !== '' && Number(r.amount) > 0);
+        }
+
+        async function scanInvoiceImage(file) {
+            const status = document.getElementById('invoiceOcrStatus');
+            const preview = document.getElementById('invoiceImagePreview');
+            const results = document.getElementById('invoiceOcrResults');
+            const importBtn = document.getElementById('importScannedInvoicesBtn');
+            if (!file || !file.type.startsWith('image/')) {
+                status.textContent = 'נא לבחור קובץ תמונה תקין.';
+                return;
+            }
+            preview.innerHTML = '';
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            img.alt = 'תצוגה מקדימה של החשבוניות';
+            img.className = 'inline-block max-w-full max-h-64 object-contain';
+            preview.appendChild(img);
+            preview.classList.remove('hidden');
+            results.innerHTML = '';
+            importBtn.disabled = true;
+            status.textContent = 'מזהה טקסט בתמונה… התהליך עשוי להימשך מעט זמן.';
+            try {
+                if (!window.Tesseract) throw new Error('ספריית זיהוי הטקסט לא נטענה. בדוק חיבור לאינטרנט ורענן את הדף.');
+                const worker = await Tesseract.createWorker('heb+eng', 1, {
+                    logger: m => {
+                        if (m.status === 'recognizing text' && m.progress != null) {
+                            status.textContent = `מזהה טקסט בתמונה… ${Math.round(m.progress * 100)}%`;
+                        }
+                    }
+                });
+                const result = await worker.recognize(file);
+                await worker.terminate();
+                const ocrText = result.data.text || '';
+                document.getElementById('invoiceRawText').value = ocrText;
+                document.getElementById('invoiceRawTextWrap').classList.remove('hidden');
+                const rows = parseInvoiceOcr(ocrText);
+                renderScannedInvoiceRows(rows);
+                status.textContent = 'הסריקה הסתיימה. חובה לבדוק את מספרי החשבוניות והסכומים לפני הייבוא.';
+            } catch (err) {
+                console.error('Invoice OCR error:', err);
+                status.textContent = 'לא הצלחנו לסרוק את התמונה: ' + (err.message || 'שגיאה לא ידועה');
+            }
+        }
+
+        document.addEventListener('change', (e) => {
+            if (e.target && e.target.id === 'invoiceImageInput') {
+                scanInvoiceImage(e.target.files && e.target.files[0]);
+            }
+        });
+
+        function importScannedInvoices() {
+            const rows = scannedInvoiceRows.filter(r => r.amount !== '' && Number(r.amount) > 0);
+            if (!rows.length) {
+                alert('לא נמצא סכום תקין. יש להזין או לתקן לפחות סכום אחד.');
+                return;
+            }
+            if (!confirm(`לייבא ${rows.length} חשבוניות כהכנסות? בדקת את המספרים והסכומים?`)) return;
+            if (!Array.isArray(appData.manualIncomes)) appData.manualIncomes = [];
+            rows.forEach(row => {
+                const invoiceNo = cleanInvoiceNumber(row.invoiceNo) || 'לא זוהה';
+                appData.manualIncomes.push({
+                    id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 8),
+                    date: row.date || new Date().toISOString().slice(0,10),
+                    title: `חשבונית מספר ${invoiceNo}`,
+                    invoiceNumber: invoiceNo,
+                    amount: Number(row.amount)
+                });
+            });
+            saveDataToCloud();
+            closeModal('invoiceScanModal');
+            document.getElementById('invoiceImageInput').value = '';
+            document.getElementById('invoiceImagePreview').innerHTML = '';
+            document.getElementById('invoiceImagePreview').classList.add('hidden');
+            document.getElementById('invoiceOcrResults').innerHTML = '';
+            document.getElementById('invoiceOcrStatus').textContent = '';
+            document.getElementById('invoiceRawText').value = '';
+            document.getElementById('invoiceRawTextWrap').classList.add('hidden');
+            scannedInvoiceRows = [];
+            alert('החשבוניות נוספו להכנסות. בדוק שהן מופיעות ברשימת ההכנסות.');
+        }
+
+        function exportToCSV() {
+            let csv = '\uFEFFתאריך,תיאור,קטגוריה,סכום ברוטו,% מוכר,סכום מוכר במס\n';
+            appData.expenses.forEach(e => {
+                const ded = e.amountGross * (e.deductiblePercent / 100);
+                csv += `"${e.date}","${e.title}","${e.category}",₪${e.amountGross},${e.deductiblePercent}%,₪${ded}\n`;
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `tax_report_2026.csv`;
+            a.click();
+        }
+
+        document.addEventListener("input", (e) => {
+            if (e.target && e.target.id === "pinInput") {
+                if (e.target.value.length === 4) {
+                    window.checkPin();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
